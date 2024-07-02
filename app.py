@@ -71,6 +71,12 @@ class MyConnection:
 
 
 async def get_candle_v2(pair, timeframe):
+    email = "govindkhapare2001@gmail.com"
+    password = "Akshay@2001"
+    client = Quotex(email=email,
+                    password=password,
+                    headless=False)
+    client.debug_ws_enable = False
     prepare_connection = MyConnection(client)
     check_connect, message = await prepare_connection.connect()
     if check_connect:
