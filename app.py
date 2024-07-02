@@ -88,17 +88,14 @@ async def get_candle_v2(pair, timeframe):
 
 
 @app.route('/candles', methods=['GET'])
-def get_candles():
-    pair = request.args.get('pair', default='FB_otc', type=str)
-    timeframe = request.args.get('timeframe', default=60, type=int)
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    candles = loop.run_until_complete(get_candle_v2(pair, timeframe))
-    loop.close()
-
-    return jsonify(candles)
-
+async def get_candles():
+    pair = request.args.get('pair')
+    timeframe = int(request.args.get('timeframe'))
+    if pair and timeframe:
+        candles = await get_candle_v2(pair, timeframe)
+        return jsonify(candles)
+    else:
+        return jsonify({'error': 'pair and timeframe are required'}), 400
 
 if __name__ == '__main__':
     app.run(debug=True)
