@@ -92,8 +92,11 @@ async def get_candles():
     pair = request.args.get('pair')
     timeframe = int(request.args.get('timeframe'))
     if pair and timeframe:
-        candles = await get_candle_v2(pair, timeframe)
-        return jsonify(candles)
+        try:
+            candles = await get_candle_v2(pair, timeframe)
+            return jsonify(candles)
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
     else:
         return jsonify({'error': 'pair and timeframe are required'}), 400
 
