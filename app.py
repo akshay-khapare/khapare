@@ -72,6 +72,7 @@ def predict():
     percent = ''
 
     data = API.get_candles(pair, timeframe*60, offset, time())
+    data.pop()
     X = []
     y = []
 
