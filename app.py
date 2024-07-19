@@ -62,7 +62,7 @@ API = IQ_Option("akshaykhapare2003@gmail.com", "Akshay@2001")
 API.connect()
 
 
-@app.route('/down', methods=['GET'])
+@app.route('/up', methods=['GET'])
 def predict():
     pair = request.args.get('pair', 'EURUSD')
     timeframe = request.args.get('timeframe', 1)
@@ -125,86 +125,67 @@ def predict():
     return jsonify(response)
 
 
-# @app.route('/up', methods=['GET'])
-# def predict():
-#     pair = request.args.get('pair', 'EURUSD')
-#     timeframe = request.args.get('timeframe', 1)
-#     offset = request.args.get('offset', 3)
-#     signal = ''
-#     trend = ''
-#     percent = ''
+@app.route('/down', methods=['GET'])
+def predict():
+    pair = request.args.get('pair', 'EURUSD')
+    timeframe = request.args.get('timeframe', 1)
+    offset = request.args.get('offset', 3)
+    signal = ''
+    trend = ''
+    percent = ''
 
-#     data = API.get_candles(pair, timeframe*60, offset, time())
-#     X = []
-#     y = []
+    data = API.get_candles(pair, timeframe*60, offset, time())
+    data.pop()
+    X = []
+    y = []
 
-#     for i in range(len(data) - 1):
-#         candle = data[i]
-#         next_candle = data[i + 1]
+    for i in range(len(data) - 1):
+        candle = data[i]
+        next_candle = data[i + 1]
 
-#     # Features: open, close, min, max, volume
-#         features = [
-#             candle['open'],
-#             candle['close'],
-#             candle['min'],
-#             candle['max'],
-#             candle['volume']
-#         ]
-#         X.append(features)
+        features = [
+            candle['open'],
+            candle['close'],
+            candle['min'],
+            candle['max'],
+            candle['volume']
+        ]
+        X.append(features)
 
-#     # Label: 1 if next candle closes higher, 0 otherwise
-#         label = 1 if next_candle['close'] > candle['close'] else 0
-#         y.append(label)
+        label = 1 if next_candle['close'] < candle['close'] else 0
+        y.append(label)
 
-#     X = np.array(X)
-#     y = np.array(y)
+    X = np.array(X)
+    y = np.array(y)
 
-# # Check the distribution of classes
-#     unique, counts = np.unique(y, return_counts=True)
-#     # print(f"Class distribution: {dict(zip(unique, counts))}")
+    scaler = StandardScaler()
+    scaler.fit(X)
+    X_scaled = scaler.transform(X)
 
-# # Ensure there are at least two classes
-#     if len(unique) < 2:
-#         signal = 'No signal'
-#     #     print(
-#     # "Not enough classes in the data. Adjust the data to have at least two classes.")
-#     else:
-#         # Normalize the features
-#         scaler = StandardScaler()
-#         X_scaled = scaler.fit_transform(X)
+    model = LogisticRegression()
+    model.fit(X_scaled, y)
 
-#         # Train the logistic regression model
-#         model = LogisticRegression()
-#         model.fit(X_scaled, y)
+    last_candle = data[-1]
+    last_features = np.array([[
+        last_candle['open'],
+        last_candle['close'],
+        last_candle['min'],
+        last_candle['max'],
+        last_candle['volume']
+    ]])
+    last_features_scaled = scaler.transform(last_features)
 
-#         # Prepare the last candle data for prediction
-#         last_candle = data[-1]
-#         last_features = np.array([[
-#             last_candle['open'],
-#             last_candle['close'],
-#             last_candle['min'],
-#             last_candle['max'],
-#             last_candle['volume']
-#         ]])
-#         last_features_scaled = scaler.transform(last_features)
+    prediction = model.predict_classes(last_features_scaled)[0]
+    probability = model.predict(last_features_scaled)[0]
 
-#         # Make prediction
-#         prediction = model.predict(last_features_scaled)
-#         probability = model.predict_proba(last_features_scaled)[0]
+    response = {
+        "signal": "Up" if prediction == 1 else "Down",
+        "probability_up": probability,
+        "probability_down": 1 - probability,
+        "trend": "Up" if last_candle['close'] > last_candle['open'] else "Down"
+    }
 
-#         trend = "Up" if last_candle['close'] > last_candle['open'] else "Down"
-#         signal = 'Up' if prediction[0] == 1 else 'Down'
-#         percent = f'{probability[1]:.2f}'
-
-#     #     print(
-#     # f"{'Up' if prediction[0] == 1 else 'Down'} {probability[1]:.2f}, Down - {probability[0]:.2f} {trend}", data_atual)
-
-#     return jsonify({
-#         'pair': pair,
-#         'signal': signal,
-#         'trend': trend,
-#         'percent': percent
-#     })
+    return jsonify(response)
 
 
 if __name__ == '__main__':
