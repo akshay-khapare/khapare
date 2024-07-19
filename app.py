@@ -1,96 +1,178 @@
 from iqoptionapi.stable_api import IQ_Option
-from datetime import datetime, timedelta
-import pandas as pd
 import numpy as np
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-import tensorflow as tf
-from datetime import datetime
-from time import sleep, time
-import warnings
+from time import time
+from sklearn.linear_model import LogisticRegression
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
-
-warnings.filterwarnings("ignore", category=UserWarning, module="tensorflow")
-
-
-tf.get_logger().setLevel('ERROR')
-
-warnings.filterwarnings('ignore', category=FutureWarning, module='keras')
 
 
 API = IQ_Option("akshaykhapare2003@gmail.com", "Akshay@2001")
 API.connect()
 
 
-@app.route('/v', methods=['GET'])
+@app.route('/down', methods=['GET'])
 def predict():
     pair = request.args.get('pair', 'EURUSD')
     timeframe = request.args.get('timeframe', 1)
     offset = request.args.get('offset', 3)
+    signal = ''
+    trend = ''
+    percent = ''
 
-    candles_data = API.get_candles(pair, timeframe*60, offset, time())
-    df = pd.DataFrame(candles_data)
-    df['next_close'] = df['close'].shift(-1)
-    df['direction'] = (df['next_close'] > df['close']).astype(int)
-    df['price_range'] = df['max'] - df['min']
-    df['price_change'] = df['close'] - df['open']
-    df['price_change_pct'] = df['price_change'] / df['open']
-    df['volume_change'] = df['volume'].pct_change().fillna(0)
-    df = df.dropna()
+    data = API.get_candles(pair, timeframe*60, offset, time())
+    X = []
+    y = []
 
-    features = df[['direction']]
-    labels = df['direction']
+    for i in range(len(data) - 1):
+        candle = data[i]
+        next_candle = data[i + 1]
 
-    scaler = StandardScaler()
-    features = scaler.fit_transform(features)
+    # Features: open, close, min, max, volume
+        features = [
+            candle['open'],
+            candle['close'],
+            candle['min'],
+            candle['max'],
+            candle['volume']
+        ]
+        X.append(features)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        features, labels, test_size=0.2, random_state=42)
+    # Label: 1 if next candle closes higher, 0 otherwise
+        label = 1 if next_candle['close'] < candle['close'] else 0
+        y.append(label)
 
-# Build the TensorFlow model
-    model = tf.keras.models.Sequential([
-        tf.keras.layers.Dense(64, activation='relu',
-                              input_shape=(X_train.shape[1],)),
-        tf.keras.layers.Dense(32, activation='relu'),
-        tf.keras.layers.Dense(1, activation='sigmoid')
-    ])
+    X = np.array(X)
+    y = np.array(y)
 
-# Compile the model
-    model.compile(optimizer='adam', loss='binary_crossentropy',
-                  metrics=['accuracy'])
+# Check the distribution of classes
+    unique, counts = np.unique(y, return_counts=True)
+    # print(f"Class distribution: {dict(zip(unique, counts))}")
 
-# Train the model
-    model.fit(X_train, y_train, epochs=1, batch_size=1,
-              validation_split=0, verbose=0)
-
-# Evaluate the model
-    loss, accuracy = model.evaluate(X_test, y_test)
-# print(f"Test Accuracy: {accuracy * 100:.2f}%")
-
-# Make predictions
-    predictions = (model.predict(X_test) > 0.5).astype(int)
-
-# Print actual and predicted directions
-    results = pd.DataFrame(
-        {'Actual': y_test, 'Predicted': predictions.flatten()})
-# print(results)
-
-# Print up and down directions
-# print("\nUp predictions:")
-    if not results[results['Predicted'] == 1].empty:
-        direction = 'UP'
-    elif not results[results['Predicted'] == 0].empty:
-        direction = 'DOWN'
+# Ensure there are at least two classes
+    if len(unique) < 2:
+        signal = 'No signal'
+    #     print(
+    # "Not enough classes in the data. Adjust the data to have at least two classes.")
     else:
-        direction = 'NONE'
+        # Normalize the features
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
 
-    # print(f' {direction} {accuracy * 100:.2f}%')
+        # Train the logistic regression model
+        model = LogisticRegression()
+        model.fit(X_scaled, y)
+
+        # Prepare the last candle data for prediction
+        last_candle = data[-1]
+        last_features = np.array([[
+            last_candle['open'],
+            last_candle['close'],
+            last_candle['min'],
+            last_candle['max'],
+            last_candle['volume']
+        ]])
+        last_features_scaled = scaler.transform(last_features)
+
+        # Make prediction
+        prediction = model.predict(last_features_scaled)
+        probability = model.predict_proba(last_features_scaled)[0]
+
+        trend = "Up" if last_candle['close'] > last_candle['open'] else "Down"
+        signal = 'Up' if prediction[0] == 1 else 'Down'
+        percent = f'{probability[1]:.2f}'
+
+    #     print(
+    # f"{'Up' if prediction[0] == 1 else 'Down'} {probability[1]:.2f}, Down - {probability[0]:.2f} {trend}", data_atual)
 
     return jsonify({
-        'direction': direction,
-        'accuracy': f'{accuracy * 100:.2f}%'
+        'pair': pair,
+        'signal': signal,
+        'trend': trend,
+        'percent': percent
+    })
+
+
+@app.route('/up', methods=['GET'])
+def predict():
+    pair = request.args.get('pair', 'EURUSD')
+    timeframe = request.args.get('timeframe', 1)
+    offset = request.args.get('offset', 3)
+    signal = ''
+    trend = ''
+    percent = ''
+
+    data = API.get_candles(pair, timeframe*60, offset, time())
+    X = []
+    y = []
+
+    for i in range(len(data) - 1):
+        candle = data[i]
+        next_candle = data[i + 1]
+
+    # Features: open, close, min, max, volume
+        features = [
+            candle['open'],
+            candle['close'],
+            candle['min'],
+            candle['max'],
+            candle['volume']
+        ]
+        X.append(features)
+
+    # Label: 1 if next candle closes higher, 0 otherwise
+        label = 1 if next_candle['close'] > candle['close'] else 0
+        y.append(label)
+
+    X = np.array(X)
+    y = np.array(y)
+
+# Check the distribution of classes
+    unique, counts = np.unique(y, return_counts=True)
+    # print(f"Class distribution: {dict(zip(unique, counts))}")
+
+# Ensure there are at least two classes
+    if len(unique) < 2:
+        signal = 'No signal'
+    #     print(
+    # "Not enough classes in the data. Adjust the data to have at least two classes.")
+    else:
+        # Normalize the features
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+
+        # Train the logistic regression model
+        model = LogisticRegression()
+        model.fit(X_scaled, y)
+
+        # Prepare the last candle data for prediction
+        last_candle = data[-1]
+        last_features = np.array([[
+            last_candle['open'],
+            last_candle['close'],
+            last_candle['min'],
+            last_candle['max'],
+            last_candle['volume']
+        ]])
+        last_features_scaled = scaler.transform(last_features)
+
+        # Make prediction
+        prediction = model.predict(last_features_scaled)
+        probability = model.predict_proba(last_features_scaled)[0]
+
+        trend = "Up" if last_candle['close'] > last_candle['open'] else "Down"
+        signal = 'Up' if prediction[0] == 1 else 'Down'
+        percent = f'{probability[1]:.2f}'
+
+    #     print(
+    # f"{'Up' if prediction[0] == 1 else 'Down'} {probability[1]:.2f}, Down - {probability[0]:.2f} {trend}", data_atual)
+
+    return jsonify({
+        'pair': pair,
+        'signal': signal,
+        'trend': trend,
+        'percent': percent
     })
 
 

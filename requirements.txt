@@ -1,7 +1,5 @@
 
-flask==3.0.3
+flask
 iqoption
-tensorflow
 scikit-learn
-pandas
 numpy
