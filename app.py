@@ -1,104 +1,98 @@
-from quotexpy import Quotex
-from quotexpy.utils import asset_parse
-from quotexpy.utils.account_type import AccountType
-from quotexpy.utils.operation_type import OperationType
-from quotexpy.utils.duration_time import DurationTime
-# from my_connection import MyConnection
+from iqoptionapi.stable_api import IQ_Option
 from datetime import datetime, timedelta
-import pytz
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+import tensorflow as tf
+from datetime import datetime
+from time import sleep, time
+import warnings
 from flask import Flask, request, jsonify
-import os
-import asyncio
-from pathlib import Path
-
 
 app = Flask(__name__)
 
-
-class SingletonDecorator:
-    """
-    A decorator that turns a class into a singleton.
-    """
-
-    def __init__(self, cls):
-        self.cls = cls
-        self.instance = None
-
-    def __call__(self, *args, **kwargs):
-        if self.instance is None:
-            self.instance = self.cls(*args, **kwargs)
-        return self.instance
+warnings.filterwarnings("ignore", category=UserWarning, module="tensorflow")
 
 
-@SingletonDecorator
-class MyConnection:
-    """
-    This class represents a connection object and provides methods for connecting to a client.
-    """
+tf.get_logger().setLevel('ERROR')
 
-    def __init__(self, client_instance):
-        self.client = client_instance
-
-    async def connect(self, attempts=5):
-        check, reason = await self.client.connect()
-        if not check:
-            attempt = 0
-            while attempt <= attempts:
-                if not self.client.check_connect():
-                    check, reason = await self.client.connect()
-                    if check:
-                        print("Reconectado com sucesso!!!")
-                        break
-                    print("Erro ao reconectar.")
-                    attempt += 1
-                    if Path(os.path.join(".", "session.json")).is_file():
-                        Path(os.path.join(".", "session.json")).unlink()
-                    print(
-                        f"Tentando reconectar, tentativa {attempt} de {attempts}")
-                elif not check:
-                    attempt += 1
-                else:
-                    break
-                await asyncio.sleep(5)
-            return check, reason
-        return check, reason
-
-    def close(self):
-        """
-        Closes the client connection.
-        """
-        self.client.close()
+warnings.filterwarnings('ignore', category=FutureWarning, module='keras')
 
 
-async def get_candle_v2(pair, timeframe):
-    email = "govindkhapare2001@gmail.com"
-    password = "Akshay@2001"
-    client = Quotex(email=email,
-                    password=password,
-                    headless=False)
-    client.debug_ws_enable = False
-    prepare_connection = MyConnection(client)
-    check_connect, message = await prepare_connection.connect()
-    if check_connect:
-        candles = await client.get_candle_v2(pair, timeframe)
-        columns = ["from", "open", "close", "max", "min", "volume", "to"]
-        velas = [dict(zip(columns, entry)) for entry in candles]
-        return velas
-    return []
+API = IQ_Option("akshaykhapare2003@gmail.com", "Akshay@2001")
+API.connect()
 
 
-@app.route('/candles', methods=['GET'])
-async def get_candles():
-    pair = request.args.get('pair')
-    timeframe = int(request.args.get('timeframe'))
-    if pair and timeframe:
-        try:
-            candles = await get_candle_v2(pair, timeframe)
-            return jsonify(candles)
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+@app.route('/v', methods=['GET'])
+def predict():
+    pair = request.args.get('pair', 'EURUSD')
+    timeframe = request.args.get('timeframe', 1)
+    offset = request.args.get('offset', 3)
+
+    candles_data = API.get_candles(pair, timeframe*60, offset, time())
+    df = pd.DataFrame(candles_data)
+    df['next_close'] = df['close'].shift(-1)
+    df['direction'] = (df['next_close'] > df['close']).astype(int)
+    df['price_range'] = df['max'] - df['min']
+    df['price_change'] = df['close'] - df['open']
+    df['price_change_pct'] = df['price_change'] / df['open']
+    df['volume_change'] = df['volume'].pct_change().fillna(0)
+    df = df.dropna()
+
+    features = df[['direction']]
+    labels = df['direction']
+
+    scaler = StandardScaler()
+    features = scaler.fit_transform(features)
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        features, labels, test_size=0.2, random_state=42)
+
+# Build the TensorFlow model
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Dense(64, activation='relu',
+                              input_shape=(X_train.shape[1],)),
+        tf.keras.layers.Dense(32, activation='relu'),
+        tf.keras.layers.Dense(1, activation='sigmoid')
+    ])
+
+# Compile the model
+    model.compile(optimizer='adam', loss='binary_crossentropy',
+                  metrics=['accuracy'])
+
+# Train the model
+    model.fit(X_train, y_train, epochs=1, batch_size=1,
+              validation_split=0, verbose=0)
+
+# Evaluate the model
+    loss, accuracy = model.evaluate(X_test, y_test)
+# print(f"Test Accuracy: {accuracy * 100:.2f}%")
+
+# Make predictions
+    predictions = (model.predict(X_test) > 0.5).astype(int)
+
+# Print actual and predicted directions
+    results = pd.DataFrame(
+        {'Actual': y_test, 'Predicted': predictions.flatten()})
+# print(results)
+
+# Print up and down directions
+# print("\nUp predictions:")
+    if not results[results['Predicted'] == 1].empty:
+        direction = 'UP'
+    elif not results[results['Predicted'] == 0].empty:
+        direction = 'DOWN'
     else:
-        return jsonify({'error': 'pair and timeframe are required'}), 400
+        direction = 'NONE'
+
+    # print(f' {direction} {accuracy * 100:.2f}%')
+
+    return jsonify({
+        'direction': direction,
+        'accuracy': f'{accuracy * 100:.2f}%'
+    })
+
 
 if __name__ == '__main__':
     app.run(debug=True)
