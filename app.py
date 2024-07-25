@@ -48,7 +48,7 @@ API.connect()
 def predict():
     pair = request.args.get('pair', 'EURUSD')
     timeframe = request.args.get('timeframe', 1)
-    offset = request.args.get('offset', 5)
+    offset = int(request.args.get('offset', 3))
     signal = ''
     trend = ''
     percent = ''
