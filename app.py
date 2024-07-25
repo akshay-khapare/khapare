@@ -54,15 +54,14 @@ def predict():
     percent = ''
 
     list=[]
-    while True:
 
 
 
-        data = API.get_candles(pair, timeframe*60, offset, time())
-        data.pop()
-        next_candle_direction = predict_next_candle_direction(data)
+    data = API.get_candles(pair, timeframe*60, offset, time())
+    data.pop()
+    next_candle_direction = predict_next_candle_direction(data)
 
-        response = {
+    response = {
         'pair':pair,
         "prediction":next_candle_direction,
        
