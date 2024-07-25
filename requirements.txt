@@ -1,4 +1,4 @@
 
 flask
 iqoption
-numpy
+pandas

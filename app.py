@@ -2,61 +2,9 @@ from iqoptionapi.stable_api import IQ_Option
 import numpy as np
 from time import time
 from flask import Flask, request, jsonify
+import pandas as pd
 
 app = Flask(__name__)
-
-
-class LogisticRegression:
-    def __init__(self, learning_rate=0.01, num_iterations=10000):
-        self.learning_rate = learning_rate
-        self.num_iterations = num_iterations
-
-    def sigmoid(self, z):
-        # Sigmoid function should always return values between 0 and 1
-        return 1 / (1 + np.exp(-z))
-
-    def fit(self, X, y):
-        self.m, self.n = X.shape
-        self.weights = np.zeros(self.n)
-        self.bias = 0
-        self.X = X
-        self.y = y
-
-        for i in range(self.num_iterations):
-            self.update_weights()
-
-    def update_weights(self):
-        A = self.sigmoid(np.dot(self.X, self.weights) + self.bias)
-
-        temp = (A - self.y.T)
-        temp = np.reshape(temp, self.m)
-
-        dW = np.dot(self.X.T, temp) / self.m
-        db = np.sum(temp) / self.m
-
-        self.weights -= self.learning_rate * dW
-        self.bias -= self.learning_rate * db
-
-    def predict(self, X):
-        # Predict should also use the sigmoid function to ensure output is between 0 and 1
-        return self.sigmoid(np.dot(X, self.weights) + self.bias)
-
-    def predict_classes(self, X):
-        y_pred = self.predict(X)
-        y_pred_classes = [1 if i > 0.5 else 0 for i in y_pred]
-        return y_pred_classes
-
-# Custom StandardScaler implementation
-
-
-class StandardScaler:
-    def fit(self, X):
-        self.mean = np.mean(X, axis=0)
-        self.std = np.std(X, axis=0)
-
-    def transform(self, X):
-        return (X - self.mean) / self.std
-
 
 API = IQ_Option("akshaykhapare2003@gmail.com", "Akshay@2001")
 API.connect()
@@ -66,126 +14,115 @@ API.connect()
 def predict():
     pair = request.args.get('pair', 'EURUSD')
     timeframe = request.args.get('timeframe', 1)
-    offset = request.args.get('offset', 3)
+    offset = request.args.get('offset', 5)
     signal = ''
     trend = ''
     percent = ''
 
     data = API.get_candles(pair, timeframe*60, offset, time())
     data.pop()
-    X = []
-    y = []
+    volume_window = 3
+    price_window = 3
+    df = pd.DataFrame(data)
 
-    for i in range(len(data) - 1):
-        candle = data[i]
-        next_candle = data[i + 1]
+# Calculate Volume Moving Average (VMA) and Price Moving Average (PMA)
+    df['vma'] = df['volume'].rolling(window=volume_window).mean()
+    df['pma'] = df['close'].rolling(window=price_window).mean()
 
-        features = [
-            candle['open'],
-            candle['close'],
-            candle['min'],
-            candle['max'],
-            candle['volume']
-        ]
-        X.append(features)
+# Identify volume spikes (current volume > VMA)
+    df['volume_spike'] = df['volume'] > df['vma']
 
-        label = 1 if next_candle['close'] > candle['close'] else 0
-        y.append(label)
+# Determine trend based on Price Moving Average
+    df['price_above_pma'] = df['close'] > df['pma']
 
-    X = np.array(X)
-    y = np.array(y)
+# Predict the next candle direction
+    last_volume_spike = df['volume_spike'].iloc[-1]
+    last_price_above_pma = df['price_above_pma'].iloc[-1]
 
-    scaler = StandardScaler()
-    scaler.fit(X)
-    X_scaled = scaler.transform(X)
-
-    model = LogisticRegression()
-    model.fit(X_scaled, y)
-
-    last_candle = data[-1]
-    last_features = np.array([[
-        last_candle['open'],
-        last_candle['close'],
-        last_candle['min'],
-        last_candle['max'],
-        last_candle['volume']
-    ]])
-    last_features_scaled = scaler.transform(last_features)
-
-    prediction = model.predict_classes(last_features_scaled)[0]
-    probability = model.predict(last_features_scaled)[0]
+    if last_volume_spike and last_price_above_pma:
+        prediction = "up"
+    elif last_volume_spike and not last_price_above_pma:
+        prediction = "down"
+    else:
+    # If no clear signal from volume spike, use last close vs. open comparison
+        last_close = df['close'].iloc[-1]
+        if last_close < df['open'].iloc[-1]:
+            prediction = "call"
+        elif last_close > df['open'].iloc[-1]:
+            prediction = "put"
+        else:
+            prediction = "neutral"
 
     response = {
-        "signal": "Up" if prediction == 1 else "Down",
-        "probability_up": probability,
-        "probability_down": 1 - probability,
-        "trend": "Up" if last_candle['close'] > last_candle['open'] else "Down"
+        'pair':pair,
+        "prediction":prediction,
+       
     }
 
     return jsonify(response)
 
 
-@app.route('/down', methods=['GET'])
-def predict():
-    pair = request.args.get('pair', 'EURUSD')
-    timeframe = request.args.get('timeframe', 1)
-    offset = request.args.get('offset', 3)
-    signal = ''
-    trend = ''
-    percent = ''
+# @app.route('/down', methods=['GET'])
+# def predict():
+#     pair = request.args.get('pair', 'EURUSD')
+#     timeframe = request.args.get('timeframe', 1)
+#     offset = request.args.get('offset', 3)
+#     signal = ''
+#     trend = ''
+#     percent = ''
 
-    data = API.get_candles(pair, timeframe*60, offset, time())
-    data.pop()
-    X = []
-    y = []
+#     data = API.get_candles(pair, timeframe*60, offset, time())
+#     data.pop()
+#     X = []
+#     y = []
 
-    for i in range(len(data) - 1):
-        candle = data[i]
-        next_candle = data[i + 1]
+#     for i in range(len(data) - 1):
+#         candle = data[i]
+#         next_candle = data[i + 1]
 
-        features = [
-            candle['open'],
-            candle['close'],
-            candle['min'],
-            candle['max'],
-            candle['volume']
-        ]
-        X.append(features)
+#         features = [
+#             candle['open'],
+#             candle['close'],
+#             candle['min'],
+#             candle['max'],
+#             candle['volume']
+#         ]
+#         X.append(features)
 
-        label = 1 if next_candle['close'] < candle['close'] else 0
-        y.append(label)
+#         label = 1 if next_candle['close'] < candle['close'] else 0
+#         y.append(label)
 
-    X = np.array(X)
-    y = np.array(y)
+#     X = np.array(X)
+#     y = np.array(y)
 
-    scaler = StandardScaler()
-    scaler.fit(X)
-    X_scaled = scaler.transform(X)
+#     scaler = StandardScaler()
+#     scaler.fit(X)
+#     X_scaled = scaler.transform(X)
 
-    model = LogisticRegression()
-    model.fit(X_scaled, y)
+#     model = LogisticRegression()
+#     model.fit(X_scaled, y)
 
-    last_candle = data[-1]
-    last_features = np.array([[
-        last_candle['open'],
-        last_candle['close'],
-        last_candle['min'],
-        last_candle['max'],
-        last_candle['volume']
-    ]])
-    last_features_scaled = scaler.transform(last_features)
+#     last_candle = data[-1]
+#     last_features = np.array([[
+#         last_candle['open'],
+#         last_candle['close'],
+#         last_candle['min'],
+#         last_candle['max'],
+#         last_candle['volume']
+#     ]])
+#     last_features_scaled = scaler.transform(last_features)
 
-    prediction = model.predict_classes(last_features_scaled)[0]
-    probability = model.predict(last_features_scaled)[0]
+#     prediction = model.predict_classes(last_features_scaled)[0]
+#     probability = model.predict(last_features_scaled)[0]
 
-    response = {
-        "signal": "Up" if prediction == 1 else "Down",
-        "probability_up": probability,
-        "probability_down": 1 - probability,
-        "trend": "Up" if last_candle['close'] > last_candle['open'] else "Down"
-    }
+#     response = {
+#         "signal": "Up" if prediction == 1 else "Down",
+#         "probability_up": probability,
+#         "probability_down": 1 - probability,
+#         "trend": "Up" if last_candle['close'] > last_candle['open'] else "Down"
+#     }
 
-    return jsonify(response)
+#     return jsonify(response)
 
 
 if __name__ == '__main__':
