@@ -70,11 +70,33 @@ def predict():
 
     data = API.get_candles(pair, timeframe*60, offset, time())
     data.pop()
-    next_candle_direction = predict_next_candle_direction(data)
+    df = pd.DataFrame(data)
+    df['volume_change'] = df['volume'].diff()
+
+# Calculate price change (close - open)
+    df['price_change'] = df['close'] - df['open']
+
+# Predict direction
+    def predict_direction1(row):
+        
+        if row['volume_change'] > 0 :
+            return 'call'
+        elif row['volume_change'] < 0 :
+            return 'put'
+        else:
+            return 'unknown'
+    df['prediction1'] = df.apply(predict_direction1, axis=1)
+
+# Get the last prediction
+    last_prediction = df.iloc[-1]['prediction1']
+    df['volume_ma'] = df['volume'].rolling(window=3).mean()
+    volume_above_ma ='call' if (df['volume'] > df['volume_ma']).any() else 'put' if (df['volume'] < df['volume_ma']).any() else 'neutral'
+
+    dir=last_prediction if (last_prediction == volume_above_ma).any() else 'neutral'
 
     response = {
         'pair':pair,
-        "prediction":next_candle_direction,
+        "prediction":dir,
        
     }
 
