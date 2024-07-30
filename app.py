@@ -18,9 +18,6 @@ def predict():
     pair = request.args.get('pair', 'EURUSD')
     timeframe =int(request.args.get('timeframe', 1))
     offset = int(request.args.get('offset', 4))
-    signal = ''
-    trend = ''
-    percent = ''
 
     converted_pair = convert_currency_pair(pair)
 
@@ -95,4 +92,4 @@ def predict():
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run()
