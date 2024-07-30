@@ -115,9 +115,9 @@ def predict():
             return "neutral"
     latest_data = df.iloc[-1]
     if  latest_data['volume_change'] > 0:
-        t= "Up"
+        t= "up"
     elif latest_data['volume_change'] < 0:
-        t= "Down"
+        t= "down"
     else:
         t= "Neutral"
     next_direction = predict_next_direction(vpt)
