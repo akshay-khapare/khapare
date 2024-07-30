@@ -3,10 +3,7 @@ from flask import Flask, request, jsonify
 import pandas as pd
 import requests
 import json
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
-from sklearn.preprocessing import StandardScaler
+
 def calculate_vpt(data):
     vpt = 0
     for i in range(1, len(data)):
@@ -92,41 +89,43 @@ def predict():
             }
             data.append(candle_data)
 
-
-
-    # data = API.get_candles(pair, timeframe*60, offset, time())
-    # data.pop()
-    next_candle_direction = predict_next_candle_direction(data)
     df = pd.DataFrame(data)
-    df['price_change'] = df['close'] - df['open']
-    df['avg_price'] = (df['open'] + df['close'] + df['min'] + df['max']) / 4
-    # Define target: 1 if the next candle is up, 0 if down
-    df['target'] = (df['close'].shift(-1) > df['close']).astype(int)
-    # Drop the last row as it has no target
-    df.dropna(inplace=True)
-    # Features and target
-    X = df[['price_change', 'avg_price', 'volume']]
-    y = df['target']
-    # Split data
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-    # Train model
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X_train, y_train)
-    # Predict
-    y_pred = model.predict(X_test)
-    # Evaluate
-    accuracy = accuracy_score(y_test, y_pred)
-    # print(f"Accuracy: {accuracy:.2f}")
-    # Predict the direction of the next candle
-    last_row = df.iloc[-1][['price_change', 'avg_price', 'volume']].values.reshape(1, -1)
-    prediction = model.predict(last_row)
-    direction = "up" if prediction[0] == 1 else "down"
-        # print( direction,f"Accuracy: {accuracy:.2f}",data_atual)
+   
+    df['volume_change'] = df['volume'].diff().fillna(0)
+    vpt = [0]
+
+# Calculate VPT for each data point
+    for i in range(1, len(data)):
+        prev_close = data[i-1]['open']
+        close = data[i]['open']
+        volume = data[i]['volume']
+        vpt.append(vpt[-1] + ((close - prev_close) / prev_close) * volume)
+
+# Predict the direction for the next candle based on VPT
+    def predict_next_direction(vpt):
+        if len(vpt) < 2:
+            return "Not enough data to predict"
+
+    # Compae the last two VPT values
+        if vpt[-1] > vpt[-2]:
+            return "up"
+        elif vpt[-1] < vpt[-2]:
+            return "down"
+        else:
+            return "neutral"
+    latest_data = df.iloc[-1]
+    if  latest_data['volume_change'] > 0:
+        t= "Up"
+    elif latest_data['volume_change'] < 0:
+        t= "Down"
+    else:
+        t= "Neutral"
+    next_direction = predict_next_direction(vpt)
+    direction= next_direction if(next_direction==t) else 'neutral'
 
     response = {
         'pair':pair,
         "prediction":direction,
-        'accuracy':f'{accuracy:.2f}'
        
     }
 
