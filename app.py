@@ -67,7 +67,7 @@ def predict():
 
     response = {
         'pair':pair,
-        "prediction":prediction,
+        "prediction":q4,
        
     }
 
