@@ -44,7 +44,7 @@ API.connect()
 def predict():
     pair = request.args.get('pair', 'EURUSD')
     timeframe =int(request.args.get('timeframe', 1))
-    offset = int(request.args.get('offset', 5))
+    offset = int(request.args.get('offset', 4))
     signal = ''
     trend = ''
     percent = ''
@@ -54,22 +54,16 @@ def predict():
     # df = pd.DataFrame(data)
 
 
-    vpt_values = [0]
+    data[0] = 'g' if data[0]['open'] < data[0]['close'] else 'r' if data[0]['open'] > data[0]['close'] else 'd'
+    data[1] = 'g' if data[1]['open'] < data[1]['close'] else 'r' if data[1]['open'] > data[1]['close'] else 'd'
+    data[2] = 'g' if data[2]['open'] < data[2]['close'] else 'r' if data[2]['open'] > data[2]['close'] else 'd'
+    # data[3] = 'g' if data[3]['open'] < data[3]['close'] else 'r' if data[3]['open'] > data[3]['close'] else 'd'
+    # data[4] = 'g' if data[4]['open'] < data[4]['close'] else 'r' if data[4]['open'] > data[4]['close'] else 'd'
+    cores_velas = data[0] + ' / ' + data[1] + ' / ' + data[2] 
+    # + ' / ' + data[3] + ' / ' + data[4]  
+    q4= "PUT" if cores_velas.count('g') > cores_velas.count('r') and cores_velas.count('d') == 0 else "CALL" if cores_velas.count('r') > cores_velas.count('g') and cores_velas.count('d') == 0 else "doji"
 
-# Calculate the PVT for each row
-    for i in range(1, len(data)):
-        prev_close = data[i - 1]['close']
-        current_close = data[i]['close']
-        volume = data[i]['volume']
-        # Calculate VPT change and accumulate it
-        vpt_change = ((current_close - prev_close) / prev_close) * volume
-        vpt = vpt_values[-1] + vpt_change
-        vpt_values.append(vpt)
-# Add VT to each data entry
-    for i in range(len(data)):
-        data[i]['VPT'] = vpt_values[i]
 
-    prediction = predict_next_candle(data)
 
     response = {
         'pair':pair,
